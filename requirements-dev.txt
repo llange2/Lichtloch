@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Tests und Linting
+pytest>=8.0
+ruff>=0.6
+
+# Windows-Programm bauen (siehe README, Abschnitt „Programm bauen“)
+pyinstaller>=6.0

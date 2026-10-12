@@ -1,0 +1,15 @@
+# Konfiguration der Entwicklungswerkzeuge. Die App selbst ist kein pip-Paket:
+# Abhängigkeiten stehen in requirements.txt, Version in sunshine_finder/modules/__init__.py.
+
+[tool.pytest.ini_options]
+pythonpath = ["sunshine_finder"]   # damit "import modules.…" wie in der App funktioniert
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+extend-exclude = ["build", "build_neu", "dist", "dist_neu", "dist_setup"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["B905"]   # zip() ohne strict=: Listen sind hier bewusst gleich lang, kein Verhaltenswechsel

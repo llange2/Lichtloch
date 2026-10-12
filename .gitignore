@@ -1,0 +1,41 @@
+# --- Zugangsdaten und lokale Konfiguration (die App braucht keine davon) ---
+.env
+.env.*
+!.env.example
+token.json
+config.json
+client_secret*.json
+
+# --- Laufzeitdaten: enthalten Standort, Suchverlauf und Logs des Nutzers ---
+*.log
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Build-Ergebnisse (Installer/Programm gehören als Release-Datei zu GitHub, nicht ins Repo) ---
+build/
+build_neu/
+dist/
+dist_neu/
+dist_setup/
+*.exe
+*.zip
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Lokales / Editoren ---
+.temp/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp
