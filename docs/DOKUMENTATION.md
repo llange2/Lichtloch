@@ -139,7 +139,7 @@ Warum **onedir** statt einer einzelnen EXE aus PyInstaller (`--onefile`): Eine O
 | Suchen-Button | Startet Suche, deaktiviert während Ladevorgang |
 | Ergebnistabelle | Orte mit Rang, Sonnenstunden, Bewölkung, längster klarer Phase, Temperatur, Reisezeit, Niederschlag (Spaltenkopf anklicken zum Sortieren) |
 | Karte anzeigen | Öffnet die Karte mit den Orten der Tabelle (erst nach einer Suche aktiv) |
-| Detail-Popup | Stundendiagramm (Balken = 100 % − Bewölkung, Zahl darüber = Bewölkung, rote Zahl in der Zeile darüber = Temperatur in ganzen °C; Tooltip je Stunde „HH:00 – x.x °C – Bewölkung n %“; unbekannte Stunden bleiben leer; `SunChart`, mit QPainter gezeichnet), Google-Maps-Link, Niederschlagsdetails, Vergleichswert des Wettermodells |
+| Detail-Popup | Stundendiagramm (Balken = 100 % − Bewölkung; je Stunde von oben nach unten: rote Temperatur „10°C“, Balken, Sonne in % (= Balkenhöhe, nachts leer), Uhrzeit „9:00“; bei schmaler Anzeige nur jede 2./3. Spalte beschriftet; Tooltip „9:00 – 7.3 °C – Sonne 70 % (Bewölkung 30 %)“, nachts zusätzlich „Nacht“; unbekannte Temperaturen bleiben leer; `SunChart`, mit QPainter gezeichnet), Google-Maps-Link, Niederschlagsdetails, Vergleichswert des Wettermodells |
 
 ---
 
