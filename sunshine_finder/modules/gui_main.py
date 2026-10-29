@@ -27,7 +27,7 @@ from PyQt6.QtCore import (
     pyqtSignal,
     pyqtSlot,
 )
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
 from PyQt6.QtWidgets import (
     QToolTip,
     QCheckBox,
@@ -346,9 +346,10 @@ class SunChart(QWidget):
     Stundendiagramm als reines QPainter-Widget (ersetzt matplotlib: spart ~60 MB im Bundle
     und ~0,5 s beim ersten Öffnen des Detail-Popups).
 
-    Balkenhöhe = Sonnenanteil (100 % − Bewölkung); Nachtstunden bleiben grau und flach,
-    die Zahl über einem Tagbalken ist die Bewölkung in %. Die Temperatur (ganze °C) steht je
-    Stunde in einer eigenen Zeile über dem Diagramm; unbekannte Stunden bleiben leer.
+    Balkenhöhe = Sonnenanteil (100 % − Bewölkung); Nachtstunden bleiben grau und flach.
+    Je Stunde von oben nach unten: Temperatur ("10°C", ganze Grad, unbekannt = leer),
+    Balken, Sonne in % (= Balkenhöhe, nur tagsüber), Uhrzeit ("9:00"). Bei schmaler Anzeige
+    wird nur jede 2. bzw. 3. Spalte beschriftet.
     """
 
     _DAY = QColor("#FFC107")
@@ -357,7 +358,7 @@ class SunChart(QWidget):
     _AXIS = QColor("#888888")
     _TEXT = QColor("#555555")
     _TEMP = QColor("#C62828")
-    _Y_MAX = 1.15          # Platz über 100 % für die Bewölkungszahl
+    _Y_MAX = 1.05          # etwas Luft über 100 %
     _NIGHT_HEIGHT = 0.03   # Nachtbalken sind nur ein flacher Strich
     _YTICKS = (0.0, 0.25, 0.5, 0.75, 1.0)
 
@@ -377,23 +378,36 @@ class SunChart(QWidget):
         self._temp = list(temperature or [])
         self._title = title
         self.setMouseTracking(True)
-        self.setFixedHeight(236)
+        self.setFixedHeight(250)
         self.setMinimumWidth(420)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _plot_rect(self) -> QRectF:
-        left, right, top, bottom = 52, 12, 46, 44
+        left, right, top, bottom = 52, 12, 46, 58
         return QRectF(left, top, max(1, self.width() - left - right),
                       max(1, self.height() - top - bottom))
 
+    def _is_day_hour(self, hour: int) -> bool:
+        return bool(self._is_day[hour]) if hour < len(self._is_day) else True
+
+    def _sun_pct(self, hour: int) -> Optional[int]:
+        """Sonne in % (= Balkenhöhe) einer Tagesstunde, nachts None."""
+        if hour >= len(self._sun) or not self._is_day_hour(hour):
+            return None
+        return round(self._sun[hour] * 100)
+
     def hour_tooltip(self, hour: int) -> str:
-        """Text für den Tooltip einer Stundenspalte: Uhrzeit, Temperatur, Bewölkung."""
-        parts = [f"{hour:02d}:00"]
+        """Tooltip einer Stundenspalte: "9:00 – 7.3 °C – Sonne 70 % (Bewölkung 30 %)", nachts "– Nacht"."""
+        parts = [f"{hour}:00"]
         temp = self._temp[hour] if hour < len(self._temp) else None
         if temp is not None:
             parts.append(f"{temp:.1f} °C")
-        if hour < len(self._cloud):
-            parts.append(f"Bewölkung {self._cloud[hour]} %")
+        sun = self._sun_pct(hour)
+        if sun is not None:
+            cloud = f" (Bewölkung {self._cloud[hour]} %)" if hour < len(self._cloud) else ""
+            parts.append(f"Sonne {sun} %{cloud}")
+        if not self._is_day_hour(hour):
+            parts.append("Nacht")
         return " – ".join(parts)
 
     def event(self, e) -> bool:  # type: ignore[override]
@@ -445,42 +459,49 @@ class SunChart(QWidget):
         if n:
             slot = plot.width() / n
             bar_w = slot * 0.8
-            cloud_font = QFont("Segoe UI", 6)
-            # Bei schmalem Fenster nur jede zweite Temperatur, damit die Zahlen nicht überlappen.
-            temp_step = 1 if slot >= 17 else 2
+            label_font = QFont("Segoe UI", 6)
+            # Bei schmaler Anzeige nur jede 2. bzw. 3. Spalte beschriften, damit sich die
+            # Beschriftungen nicht überlappen.
+            widest = max(
+                QFontMetricsF(label_font).horizontalAdvance("-10°C"),
+                QFontMetricsF(small).horizontalAdvance("20:00"),
+            )
+            step = min(3, max(1, math.ceil((widest + 3) / slot)))
             for hour, value in enumerate(self._sun):
-                day = bool(self._is_day[hour]) if hour < len(self._is_day) else True
+                day = self._is_day_hour(hour)
                 v = value if day else self._NIGHT_HEIGHT
                 bar_h = min(max(v, 0.0), self._Y_MAX) / self._Y_MAX * plot.height()
                 x = plot.left() + hour * slot
                 bar = QRectF(x + (slot - bar_w) / 2, plot.bottom() - bar_h, bar_w, bar_h)
                 p.fillRect(bar, self._DAY if day else self._NIGHT)
-                if day and hour < len(self._cloud):
-                    label_y = plot.bottom() - min(v, 1.0) / self._Y_MAX * plot.height() - 14
-                    p.setFont(cloud_font)
-                    p.setPen(self._TEXT)
-                    p.drawText(
-                        QRectF(x - 2, label_y, slot + 4, 12),
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-                        str(self._cloud[hour]),
-                    )
+                if hour % step:
+                    continue
+                label_x, label_w = x + slot / 2 - widest / 2 - 2, widest + 4
                 temp = self._temp[hour] if hour < len(self._temp) else None
-                if temp is not None and hour % temp_step == 0:
-                    p.setFont(cloud_font)
+                if temp is not None:
+                    p.setFont(label_font)
                     p.setPen(self._TEMP)
                     p.drawText(
-                        QRectF(x - 4, plot.top() - 15, slot + 8, 12),
+                        QRectF(label_x, plot.top() - 15, label_w, 12),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-                        str(round(temp)),
+                        f"{round(temp)}°C",
                     )
-                if hour % 2 == 0:
-                    p.setFont(small)
+                sun = self._sun_pct(hour)
+                if sun is not None:
+                    p.setFont(label_font)
                     p.setPen(self._TEXT)
                     p.drawText(
-                        QRectF(x - 6, plot.bottom() + 3, slot + 12, 14),
+                        QRectF(label_x, plot.bottom() + 3, label_w, 12),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                        f"{hour}h",
+                        f"{sun}%",
                     )
+                p.setFont(small)
+                p.setPen(self._TEXT)
+                p.drawText(
+                    QRectF(label_x, plot.bottom() + 16, label_w, 14),
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                    f"{hour}:00",
+                )
 
         # ---- Achsenbeschriftung ----
         p.setFont(small)
@@ -488,7 +509,7 @@ class SunChart(QWidget):
         p.drawText(
             QRectF(plot.left(), h - 20, plot.width(), 16),
             Qt.AlignmentFlag.AlignCenter,
-            "Stunde (rot oben = Temperatur in °C, Zahl über dem Balken = Bewölkung in %)",
+            "Über dem Balken: Temperatur. Unter dem Balken: Sonne in % (= Balkenhöhe) und Uhrzeit.",
         )
         p.save()
         p.translate(12, plot.center().y())
