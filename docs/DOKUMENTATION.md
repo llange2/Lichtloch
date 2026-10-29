@@ -139,7 +139,7 @@ Warum **onedir** statt einer einzelnen EXE aus PyInstaller (`--onefile`): Eine O
 | Suchen-Button | Startet Suche, deaktiviert während Ladevorgang |
 | Ergebnistabelle | Orte mit Rang, Sonnenstunden, Bewölkung, längster klarer Phase, Temperatur, Reisezeit, Niederschlag (Spaltenkopf anklicken zum Sortieren) |
 | Karte anzeigen | Öffnet die Karte mit den Orten der Tabelle (erst nach einer Suche aktiv) |
-| Detail-Popup | Stundendiagramm (Balken = 100 % − Bewölkung, Zahl darüber = Bewölkung; `SunChart`, mit QPainter gezeichnet), Google-Maps-Link, Niederschlagsdetails, Vergleichswert des Wettermodells |
+| Detail-Popup | Stundendiagramm (Balken = 100 % − Bewölkung, Zahl darüber = Bewölkung, rote Zahl in der Zeile darüber = Temperatur in ganzen °C; Tooltip je Stunde „HH:00 – x.x °C – Bewölkung n %“; unbekannte Stunden bleiben leer; `SunChart`, mit QPainter gezeichnet), Google-Maps-Link, Niederschlagsdetails, Vergleichswert des Wettermodells |
 
 ---
 
@@ -150,6 +150,7 @@ Warum **onedir** statt einer einzelnen EXE aus PyInstaller (`--onefile`): Eine O
 - Jeder Ort zeigt ein Symbol mit den Sonnenstunden (eine Nachkommastelle): Sonne bei keinem Niederschlag, sonst Sonne mit Wolke und 1–3 Tropfen (leicht < 2,5 mm, mäßig < 10 mm, stark ≥ 10 mm). Der Tooltip nennt zusätzlich Bewölkung und Reisezeit.
 - **Größen:** Die Sonnen einzelner Orte sind kleiner (75 %) als die der Bündel. Die Zahl wird so groß gesetzt, dass sie höchstens 90 % der gelben Scheibe der Sonne belegt (nicht in den Strahlenkranz ragt) und sitzt mittig auf der Scheibe. Die Schriftgröße wird beim Laden der Karte aus der gemessenen Textbreite berechnet (breitester Text: „00.0“ bzw. „100%“) und skaliert mit dem Zoom. Stellschrauben im JavaScript von `map_window.py`: `SINGLE_SCALE`, `FIT`, `DISC`. Die Scheibe liegt in allen Symbol-Grafiken bei 49,6 % / 50,5 % der Bildgröße (Durchmesser ≈ 48 %); wird ein Symbol ausgetauscht, müssen diese Werte (`DISC`, CSS `.sym .num`) neu bestimmt werden.
 - **Bündelung:** Orte, die bei der aktuellen Zoomstufe weniger als 60 Pixel auseinander liegen, bilden ein Bündel. Es zeigt das Symbol, das die meisten seiner Orte haben (bei Gleichstand das sonnigere), und den Sonnenanteil (100 − Bewölkung) des sonnigsten Ortes – grün ab 70 %, gelb ab 40 %, sonst orange. Ein Klick zoomt hinein; ab Zoomstufe 17 wird nicht mehr gebündelt.
+- **Klick auf einen einzelnen Ort** öffnet dessen Detail-Popup (wie ein Klick auf die Tabellenzeile). Der Marker navigiert zu `lichtloch://spot/<Index>`; `_MapPage.acceptNavigationRequest` fängt das ab (die Karte bleibt stehen) und `MapWindow.spot_clicked` meldet den Index der beim Öffnen übergebenen Ergebnisliste an `MainWindow`.
 - Ortsnamen stammen aus OpenStreetMap und sind damit fremde Eingaben: Sie gelangen nur als JSON mit maskierten Zeichen (`_js_json`) in die Seite und werden vor der Anzeige in Tooltips HTML-maskiert (`esc()`).
 
 ---

@@ -13,7 +13,9 @@ Browser-Teil der App aus dem Internet (cdnjs, tile.openstreetmap.org).
   - Orte, die auf dem Bildschirm dicht beieinander liegen, werden je Region gebündelt.
     Ein Bündel zeigt das Symbol, das die meisten seiner Orte haben (bei Gleichstand das
     sonnigere), und den Sonnenanteil in % (100 − Bewölkung) des sonnigsten Ortes,
-    grün ab 70 %, gelb ab 40 %, sonst orange. Ein Klick zoomt in das Bündel hinein.
+    grün ab 70 %, gelb ab 40 %, sonst orange. Ein Klick zoomt in das Bündel hinein;
+    ein Klick auf das Symbol eines einzelnen Orts öffnet dessen Detailansicht (wie ein Klick
+    auf die Zeile der Ergebnisliste).
   - Symbole und Zahl skalieren beim Zoomen mit der Karte. Die Sonnen einzelner Orte sind
     kleiner als die der Bündel; die Zahl wird so gesetzt, dass sie in die gelbe Scheibe der
     Sonne passt (nicht in den Strahlenkranz ragt) und dort zentriert ist.
@@ -28,7 +30,8 @@ import os
 import sys
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
@@ -37,6 +40,11 @@ logger = logging.getLogger(__name__)
 # Pseudo-Origin der Seite. Die OpenStreetMap-Kachelserver verlangen einen gültigen
 # Referer; QtWebEngine sendet diesen Wert, weil die Seite per setHtml geladen wird.
 MAP_BASE_URL = "https://lichtloch.local/"
+
+# Ein Klick auf einen Ort navigiert zu "lichtloch://spot/<Index>"; die Seite fängt das ab
+# (_MapPage) und meldet den Index der Ergebnisliste an das Fenster.
+SPOT_SCHEME = "lichtloch"
+SPOT_HOST = "spot"
 
 # Feste Versionen der externen Bibliotheken (cdnjs)
 LEAFLET_URL = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/"
@@ -96,7 +104,7 @@ def _js_json(value) -> str:
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _place_payload(result: dict) -> dict:
+def _place_payload(result: dict, index: int = 0) -> dict:
     """Reduziert ein Suchergebnis auf die für die Karte nötigen Felder."""
     hours = round(float(result["total_sunshine_hours"]), 1)
     cloud = float(result.get("avg_cloud_pct", 100.0))
@@ -110,6 +118,7 @@ def _place_payload(result: dict) -> dict:
         f"Reisezeit: {minutes} min"
     )
     return {
+        "i": index,
         "lat": float(result["lat"]),
         "lng": float(result["lng"]),
         "n": result["name"],
@@ -170,7 +179,7 @@ _MAP_HTML_TEMPLATE = r"""<!DOCTYPE html>
               text-shadow: 0 0 0.12em rgba(255, 244, 200, 0.95),
                            0 0 0.24em rgba(255, 244, 200, 0.7);
               pointer-events: none; }
-  .sym.cluster { cursor: pointer; }
+  .sym.cluster, .sym.single { cursor: pointer; }
   .sym .num.good { color: #12701a; }
   .sym .num.ok   { color: #7a5c00; }
   .sym .num.poor { color: #b04a0b; }
@@ -354,7 +363,10 @@ _MAP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         icon: symbolIcon(p.l, p.h.toFixed(1), "", " single"),
         cloud: p.c, level: p.l, keyboard: false,
         zIndexOffset: Math.round(p.h * 10)
-      }).bindTooltip(tip).addTo(layer);
+      }).bindTooltip(tip).on("click", function () {
+        // Detailansicht des Ortes: das Fenster fängt diese Navigation ab (siehe _MapPage)
+        window.location.href = "%%SPOT_SCHEME%%://%%SPOT_HOST%%/" + p.i;
+      }).addTo(layer);
     });
 
     // Fenster wird beim Start noch maximiert → bis zur ersten Benutzer-Aktion neu einpassen.
@@ -405,13 +417,15 @@ def build_map_html(
         "lat": float(origin["lat"]),
         "lng": float(origin["lng"]),
     }
-    places = [_place_payload(r) for r in results]
+    places = [_place_payload(r, i) for i, r in enumerate(results)]
 
     html = _MAP_HTML_TEMPLATE
     for level in SYMBOL_FILES:
         html = html.replace(f"%%SYM{level}%%", symbols[level])
     html = html.replace("%%LEAFLET%%", LEAFLET_URL)
     html = html.replace("%%CLUSTER%%", CLUSTER_URL)
+    html = html.replace("%%SPOT_SCHEME%%", SPOT_SCHEME)
+    html = html.replace("%%SPOT_HOST%%", SPOT_HOST)
     html = html.replace("%%ORIGIN%%", _js_json(origin_payload))
     html = html.replace("%%PLACES%%", _js_json(places))
     return html
@@ -421,8 +435,33 @@ def build_map_html(
 # Fenster                                                                      #
 # --------------------------------------------------------------------------- #
 
+def parse_spot_url(url: QUrl) -> Optional[int]:
+    """Index des Ortes aus "lichtloch://spot/<Index>" oder None, wenn die URL anders aufgebaut ist."""
+    if url.scheme() != SPOT_SCHEME or url.host() != SPOT_HOST:
+        return None
+    part = url.path().lstrip("/")
+    return int(part) if part.isdigit() else None
+
+
+class _MapPage(QWebEnginePage):
+    """Fängt Klicks auf Orte ab (Navigation zu lichtloch://spot/<Index>) und meldet sie."""
+
+    spot_clicked = pyqtSignal(int)
+
+    def acceptNavigationRequest(self, url, nav_type, is_main_frame) -> bool:  # type: ignore[override]
+        if url.scheme() == SPOT_SCHEME:
+            index = parse_spot_url(url)
+            if index is not None:
+                self.spot_clicked.emit(index)
+            return False  # die Karte selbst bleibt stehen
+        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+
+
 class MapWindow(QWidget):
     """Eigenständiges Fenster mit der OpenStreetMap-Karte der Suchergebnisse."""
+
+    # Index (in der übergebenen Ergebnisliste) des Ortes, dessen Symbol angeklickt wurde
+    spot_clicked = pyqtSignal(int)
 
     def __init__(self, origin: dict, results: list[dict], date_label: str) -> None:
         html = build_map_html(origin, results)  # vor dem Fenster: Symbol-Dateien fehlen → Fehler
@@ -435,6 +474,9 @@ class MapWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self._view = QWebEngineView(self)
+        self._page = _MapPage(self._view)
+        self._page.spot_clicked.connect(self.spot_clicked)
+        self._view.setPage(self._page)
         layout.addWidget(self._view)
 
         self._view.setHtml(html, QUrl(MAP_BASE_URL))

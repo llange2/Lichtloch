@@ -61,6 +61,7 @@ class WeatherResult:
         hourly_cloud_pct: Optional[list[float]] = None,
         hourly_sun_fraction: Optional[list[float]] = None,
         hourly_is_day: Optional[list[int]] = None,
+        hourly_temperature_c: Optional[list[Optional[float]]] = None,
     ) -> None:
         # Sonnenstunden = Tageslicht-Stunden gewichtet mit dem klaren Himmel (Bewölkung)
         self.total_sunshine_hours = total_sunshine_hours
@@ -76,6 +77,8 @@ class WeatherResult:
         self.hourly_cloud_pct = hourly_cloud_pct or []
         self.hourly_sun_fraction = hourly_sun_fraction or []
         self.hourly_is_day = hourly_is_day or []
+        # Temperatur je Stunde in °C; None = unbekannt (nicht 0). Leer bei Altdaten.
+        self.hourly_temperature_c = hourly_temperature_c or []
 
     def to_dict(self) -> dict:
         return {
@@ -90,6 +93,7 @@ class WeatherResult:
             "hourly_cloud_pct": self.hourly_cloud_pct,
             "hourly_sun_fraction": self.hourly_sun_fraction,
             "hourly_is_day": self.hourly_is_day,
+            "hourly_temperature_c": self.hourly_temperature_c,
         }
 
     @classmethod
@@ -106,6 +110,7 @@ class WeatherResult:
             hourly_cloud_pct=d.get("hourly_cloud_pct"),
             hourly_sun_fraction=d.get("hourly_sun_fraction"),
             hourly_is_day=d.get("hourly_is_day"),
+            hourly_temperature_c=d.get("hourly_temperature_c"),
         )
 
 
@@ -255,4 +260,7 @@ def _calculate_weather_stats(
         hourly_cloud_pct=[round(v) for v in cloud],
         hourly_sun_fraction=sun_fraction,
         hourly_is_day=[1 if f else 0 for f in day_flags],
+        hourly_temperature_c=[
+            None if v is None else round(_num(v), 1) for v in temperature_c
+        ],
     )

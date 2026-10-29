@@ -155,3 +155,17 @@ def test_fetch_weather_ohne_bewoelkungsdaten_gibt_none(monkeypatch):
         weather.requests, "get", lambda *a, **k: FakeResponse(200, {"hourly": {"cloud_cover": []}})
     )
     assert fetch_weather(0, 0, "2026-06-01") is None
+
+
+def test_stundentemperatur_gerundet_und_unbekannt_bleibt_none():
+    temp = [10.04] * 23 + [None]
+    result = stats([0] * 24, temp=temp)
+    assert result.hourly_temperature_c[0] == 10.0
+    assert result.hourly_temperature_c[23] is None  # unbekannt, nicht 0
+    assert len(result.hourly_temperature_c) == 24
+
+
+def test_altdaten_ohne_stundentemperatur_werden_toleriert():
+    d = stats([0] * 24).to_dict()
+    del d["hourly_temperature_c"]
+    assert WeatherResult.from_dict(d).hourly_temperature_c == []
