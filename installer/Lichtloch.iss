@@ -7,7 +7,7 @@
 
 #define AppName "Lichtloch"
 ; Muss mit __version__ in sunshine_finder\modules\__init__.py uebereinstimmen (tests\test_version.py prueft das).
-#define AppVersion "1.2.1"
+#define AppVersion "1.3.0"
 
 [Setup]
 AppId={{6E0F2C4A-5B7D-4E1A-9C3B-1A7D52F0B4C8}

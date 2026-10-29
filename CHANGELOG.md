@@ -2,7 +2,7 @@
 
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
-## [Unveröffentlicht]
+## [1.3.0]
 
 ### Hinzugefügt
 - Detailansicht: Temperatur pro Stunde („10°C“) über dem Sonnen-Diagramm; unter dem Balken die Sonne in % (= Balkenhöhe, nachts leer) und die Uhrzeit („9:00“); bei schmaler Anzeige nur jede 2./3. Spalte beschriftet. Tooltip je Stunde, z. B. „9:00 – 7.3 °C – Sonne 70 % (Bewölkung 30 %)“. Unbekannte Stunden bleiben leer (nicht „0“). `WeatherResult.hourly_temperature_c`, Altdaten ohne dieses Feld werden toleriert.
