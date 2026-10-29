@@ -15,6 +15,7 @@ from typing import Optional
 
 from PyQt6.QtCore import (
     QDate,
+    QEvent,
     QObject,
     QPointF,
     QRectF,
@@ -22,11 +23,13 @@ from PyQt6.QtCore import (
     QStringListModel,
     Qt,
     QThreadPool,
+    QTimer,
     pyqtSignal,
     pyqtSlot,
 )
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
+    QToolTip,
     QCheckBox,
     QCompleter,
     QDateEdit,
@@ -227,6 +230,7 @@ class SearchWorker(QRunnable):
                 "hourly_cloud_pct": weather.hourly_cloud_pct,
                 "hourly_sun_fraction": weather.hourly_sun_fraction,
                 "hourly_is_day": weather.hourly_is_day,
+                "hourly_temperature_c": weather.hourly_temperature_c,
             })
 
         except Exception as e:
@@ -332,6 +336,7 @@ class DetailDialog(QDialog):
             sun_fraction=self.result.get("hourly_sun_fraction") or [],
             cloud=self.result.get("hourly_cloud_pct") or [],
             is_day=self.result.get("hourly_is_day") or [],
+            temperature=self.result.get("hourly_temperature_c") or [],
             title=f"Sonne am {self.selected_date} (100 % − Bewölkung)",
         )
 
@@ -342,7 +347,8 @@ class SunChart(QWidget):
     und ~0,5 s beim ersten Öffnen des Detail-Popups).
 
     Balkenhöhe = Sonnenanteil (100 % − Bewölkung); Nachtstunden bleiben grau und flach,
-    die Zahl über einem Tagbalken ist die Bewölkung in %.
+    die Zahl über einem Tagbalken ist die Bewölkung in %. Die Temperatur (ganze °C) steht je
+    Stunde in einer eigenen Zeile über dem Diagramm; unbekannte Stunden bleiben leer.
     """
 
     _DAY = QColor("#FFC107")
@@ -350,6 +356,7 @@ class SunChart(QWidget):
     _GRID = QColor("#E0E0E0")
     _AXIS = QColor("#888888")
     _TEXT = QColor("#555555")
+    _TEMP = QColor("#C62828")
     _Y_MAX = 1.15          # Platz über 100 % für die Bewölkungszahl
     _NIGHT_HEIGHT = 0.03   # Nachtbalken sind nur ein flacher Strich
     _YTICKS = (0.0, 0.25, 0.5, 0.75, 1.0)
@@ -360,16 +367,45 @@ class SunChart(QWidget):
         cloud: list,
         is_day: list,
         title: str,
+        temperature: Optional[list] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self._sun = list(sun_fraction)
         self._cloud = list(cloud)
         self._is_day = list(is_day)
+        self._temp = list(temperature or [])
         self._title = title
-        self.setFixedHeight(220)
+        self.setMouseTracking(True)
+        self.setFixedHeight(236)
         self.setMinimumWidth(420)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def _plot_rect(self) -> QRectF:
+        left, right, top, bottom = 52, 12, 46, 44
+        return QRectF(left, top, max(1, self.width() - left - right),
+                      max(1, self.height() - top - bottom))
+
+    def hour_tooltip(self, hour: int) -> str:
+        """Text für den Tooltip einer Stundenspalte: Uhrzeit, Temperatur, Bewölkung."""
+        parts = [f"{hour:02d}:00"]
+        temp = self._temp[hour] if hour < len(self._temp) else None
+        if temp is not None:
+            parts.append(f"{temp:.1f} °C")
+        if hour < len(self._cloud):
+            parts.append(f"Bewölkung {self._cloud[hour]} %")
+        return " – ".join(parts)
+
+    def event(self, e) -> bool:  # type: ignore[override]
+        if e.type() == QEvent.Type.ToolTip and self._sun:
+            plot = self._plot_rect()
+            hour = int((e.pos().x() - plot.left()) / (plot.width() / len(self._sun)))
+            if 0 <= hour < len(self._sun) and plot.left() <= e.pos().x() <= plot.right():
+                QToolTip.showText(e.globalPos(), self.hour_tooltip(hour), self)
+            else:
+                QToolTip.hideText()
+            return True
+        return super().event(e)
 
     def paintEvent(self, _event) -> None:  # type: ignore[override]
         p = QPainter(self)
@@ -377,8 +413,8 @@ class SunChart(QWidget):
         p.fillRect(self.rect(), QColor("white"))
 
         w, h = self.width(), self.height()
-        left, right, top, bottom = 52, 12, 30, 44
-        plot = QRectF(left, top, max(1, w - left - right), max(1, h - top - bottom))
+        left = 52
+        plot = self._plot_rect()
 
         title_font = QFont("Segoe UI", 10)
         title_font.setBold(True)
@@ -410,6 +446,8 @@ class SunChart(QWidget):
             slot = plot.width() / n
             bar_w = slot * 0.8
             cloud_font = QFont("Segoe UI", 6)
+            # Bei schmalem Fenster nur jede zweite Temperatur, damit die Zahlen nicht überlappen.
+            temp_step = 1 if slot >= 17 else 2
             for hour, value in enumerate(self._sun):
                 day = bool(self._is_day[hour]) if hour < len(self._is_day) else True
                 v = value if day else self._NIGHT_HEIGHT
@@ -426,6 +464,15 @@ class SunChart(QWidget):
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
                         str(self._cloud[hour]),
                     )
+                temp = self._temp[hour] if hour < len(self._temp) else None
+                if temp is not None and hour % temp_step == 0:
+                    p.setFont(cloud_font)
+                    p.setPen(self._TEMP)
+                    p.drawText(
+                        QRectF(x - 4, plot.top() - 15, slot + 8, 12),
+                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+                        str(round(temp)),
+                    )
                 if hour % 2 == 0:
                     p.setFont(small)
                     p.setPen(self._TEXT)
@@ -441,7 +488,7 @@ class SunChart(QWidget):
         p.drawText(
             QRectF(plot.left(), h - 20, plot.width(), 16),
             Qt.AlignmentFlag.AlignCenter,
-            "Stunde (Zahl über dem Balken = Bewölkung in %)",
+            "Stunde (rot oben = Temperatur in °C, Zahl über dem Balken = Bewölkung in %)",
         )
         p.save()
         p.translate(12, plot.center().y())
@@ -1196,9 +1243,14 @@ class MainWindow(QWidget):
         """Öffnet das Detail-Popup für die angeklickte Zeile."""
         if row < 0 or row >= len(self._results):
             return
-        result = self._results[row]
+        self._show_detail(row)
+
+    def _show_detail(self, row: int) -> None:
+        """Öffnet das Detail-Popup für den Ort in Zeile `row` der Ergebnisliste."""
+        if row < 0 or row >= len(self._results):
+            return
         date_str = self._date_edit.date().toString("yyyy-MM-dd")
-        dlg = DetailDialog(result, date_str, self)
+        dlg = DetailDialog(self._results[row], date_str, self)
         dlg.exec()
 
     def _on_map_clicked(self) -> None:
@@ -1223,8 +1275,21 @@ class MainWindow(QWidget):
                 self, "Karte nicht verfügbar", f"Die Karte konnte nicht geöffnet werden:\n{exc}"
             )
             return
+        # Klick auf einen Ort in der Karte = Klick auf seine Zeile. Die Karte zeigt die
+        # Ergebnisse vom Öffnen; der Index bezieht sich auf genau diese Liste.
+        shown = list(self._results)
+        # Dialog erst nach der Rückkehr aus dem Web-Callback öffnen (eigene Ereignisschleife).
+        window.spot_clicked.connect(
+            lambda i, shown=shown: QTimer.singleShot(0, lambda: self._show_map_spot(shown, i))
+        )
         self._map_window = window  # Referenz halten, sonst wird das Fenster eingesammelt
         window.show()
+
+    def _show_map_spot(self, shown: list, index: int) -> None:
+        """Detailansicht zu einem in der Karte angeklickten Ort."""
+        if 0 <= index < len(shown):
+            date_str = self._results_date or self._date_edit.date().toString("yyyy-MM-dd")
+            DetailDialog(shown[index], date_str, self).exec()
 
     # ------------------------------------------------------------------ #
     # Hilfsmethoden                                                        #

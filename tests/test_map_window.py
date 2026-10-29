@@ -4,6 +4,7 @@ import json
 import re
 
 import pytest
+from PyQt6.QtCore import QUrl
 
 pytest.importorskip("PyQt6.QtWebEngineWidgets")
 
@@ -14,6 +15,7 @@ from modules.map_window import (  # noqa: E402
     _place_payload,
     build_map_html,
     load_symbols,
+    parse_spot_url,
     precipitation_level,
 )
 
@@ -73,3 +75,27 @@ def test_build_map_html_maskiert_ortsnamen_aus_openstreetmap():
     # ... und fügt der Seite keine zusätzlichen Script-Tags hinzu.
     for tag in (r"<script", r"</script>"):
         assert len(re.findall(tag, html)) == len(re.findall(tag, seite(harmlos)))
+
+
+def test_place_payload_enthaelt_index_fuer_klick():
+    assert _place_payload(ergebnis(), 7)["i"] == 7
+
+
+def test_karte_meldet_klick_auf_einzelnen_ort():
+    origin = {"name": "Freiburg", "lat": 47.99, "lng": 7.85}
+    html = build_map_html(origin, [ergebnis(), ergebnis("Basel")], DUMMY_SYMBOLS)
+    assert 'window.location.href = "lichtloch://spot/" + p.i' in html
+    assert '"i": 1' in html
+
+
+@pytest.mark.parametrize(
+    ("url", "index"),
+    [
+        ("lichtloch://spot/3", 3),
+        ("lichtloch://spot/x", None),
+        ("lichtloch://other/3", None),
+        ("https://spot/3", None),
+    ],
+)
+def test_parse_spot_url(url, index):
+    assert parse_spot_url(QUrl(url)) == index

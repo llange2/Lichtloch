@@ -2,6 +2,12 @@
 
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [Unveröffentlicht]
+
+### Hinzugefügt
+- Detailansicht: Temperatur pro Stunde (ganze °C) in einer Zeile über dem Sonnen-Diagramm; Tooltip je Stunde mit Uhrzeit, Temperatur und Bewölkung. Unbekannte Stunden bleiben leer (nicht „0“). `WeatherResult.hourly_temperature_c`, Altdaten ohne dieses Feld werden toleriert.
+- Karte: Ein Klick auf das Symbol eines einzelnen Orts öffnet dessen Detailansicht (wie ein Klick auf die Tabellenzeile). Bündel zoomen wie bisher.
+
 ## [1.2.1] – erste öffentliche Version
 
 ### Geändert
